@@ -54,6 +54,9 @@ export LUA_RESTY_LOCK=0.08
 export LUA_RESTY_UPLOAD_VERSION=0.10
 export LUA_RESTY_STRING_VERSION=0.12
 
+export OPENSSL_VERSION=1.0.2u
+export OPENSSL_FIPS_VERSION=2.0.15
+
 export BUILD_PATH=/tmp/build
 
 ARCH=$(uname -m)
@@ -83,7 +86,6 @@ apk add \
   libc-dev \
   make \
   automake \
-  openssl-dev \
   pcre-dev \
   zlib-dev \
   linux-headers \
@@ -98,7 +100,6 @@ apk add \
   curl ca-certificates \
   patch \
   libaio-dev \
-  openssl \
   cmake \
   util-linux \
   lmdb-tools \
@@ -119,6 +120,12 @@ mkdir --verbose -p "$BUILD_PATH"
 cd "$BUILD_PATH"
 
 # download, verify and extract the source files
+get_src 76119b771249662d6a9e07b7841352f25569187e337b3c4ac035e7fd47c45543 \
+        "https://www.openssl.org/source/openssl-fips-$OPENSSL_FIPS_VERSION.tar.gz"
+
+get_src ecd0c6ffb493dd06707d38b14bb4d8c2288bb7033735606569d8f90f89669d16 \
+        "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz"
+
 get_src 61df546927905a0d624f9396bb7a8bc7ca7fd26522ce9714d56a78b73284000e \
         "https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
@@ -212,6 +219,14 @@ get_src 4aca34f324d543754968359672dcf5f856234574ee4da360ce02c778d244572a \
 get_src 987d5754a366d3ccbf745d2765f82595dcff5b94ba6c755eeb6d310447996f32 \
         "https://github.com/ledgetech/lua-resty-http/archive/v$LUA_RESTY_HTTP.tar.gz"
 
+# Compile the OpenSSL FIPS module first, as it doesn't seem to play well with parallel compilation
+# NOTE: These commands cannot be changed, otherwise the resulting output is *not* FIPS validated
+cd "$BUILD_PATH/openssl-fips-$OPENSSL_FIPS_VERSION"
+./config
+make
+make install
+
+ls -la "$BUILD_PATH/"
 
 # improve compilation times
 CORES=$(($(grep -c ^processor /proc/cpuinfo) - 0))
@@ -231,8 +246,6 @@ make CCDEBUG=-g
 make install
 
 ln -s /usr/local/bin/luajit /usr/local/bin/lua
-
-cd "$BUILD_PATH"
 
 # Git tuning
 git config --global --add core.compression -1
@@ -461,6 +474,9 @@ WITH_FLAGS="--with-debug \
   --with-http_secure_link_module \
   --with-http_gunzip_module"
 
+# We need to export this to enable the OpenSSL FIPS "linker" to fallback to GCC when setting the integrity test digest
+export FIPSLD_CC=gcc
+
 # "Combining -flto with -g is currently experimental and expected to produce unexpected results."
 # https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
 CC_OPT="-g -Og -fPIE -fstack-protector-strong \
@@ -520,8 +536,11 @@ WITH_MODULES=" \
   --without-mail_imap_module \
   --without-http_uwsgi_module \
   --without-http_scgi_module \
+  --with-cc=/usr/local/ssl/fips-2.0/bin/fipsld \
   --with-cc-opt="${CC_OPT}" \
   --with-ld-opt="${LD_OPT}" \
+  --with-openssl="${BUILD_PATH}/openssl-$OPENSSL_VERSION" \
+  --with-openssl-opt="fips" \
   --user=www-data \
   --group=www-data \
   ${WITH_MODULES}

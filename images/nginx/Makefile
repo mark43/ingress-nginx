@@ -44,6 +44,11 @@ build: ensure-buildx
 push: OUTPUT=--push
 push: build
 
+# load the resulting image into the local docker images list
+# (only works for single-architecture images)
+load: OUTPUT=--load
+load: build
+
 # enable buildx
 ensure-buildx:
 # this is required for cloudbuild

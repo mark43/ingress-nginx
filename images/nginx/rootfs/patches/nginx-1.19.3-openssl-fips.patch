@@ -1,0 +1,22 @@
+diff -urp nginx-1.19.3/src/event/ngx_event_openssl.c nginx-1.19.3-patched/src/event/ngx_event_openssl.c
+--- nginx-1.19.3/src/event/ngx_event_openssl.c	2020-10-27 11:09:20.000000000 -0400
++++ nginx-1.19.3-patched/src/event/ngx_event_openssl.c	2020-10-29 13:40:25.000000000 -0400
+@@ -165,6 +165,18 @@ ngx_ssl_init(ngx_log_t *log)
+ 
+ #endif
+ 
++    // Enable FIPS mode for OpenSSL
++    int ret = FIPS_mode_set(1);
++    if (ret != 1) {
++        ERR_load_crypto_strings();
++        ERR_print_errors_fp(stderr);
++        
++        ngx_ssl_error(NGX_LOG_EMERG, log, 0, "FIPS_mode_set() failed: %lx.", ERR_get_error());
++        return NGX_ERROR;
++    } else {
++        fprintf(stderr,"*** IN FIPS MODE ***\n");
++    }
++
+ #ifndef SSL_OP_NO_COMPRESSION
+     {
+     /*
